@@ -12,15 +12,16 @@
 #
 # PF_RING
 #
-PFRINGDIR  = ../lib
+PFRINGDIR  = thirdParty/pfring/lib
 LIBPFRING  = ${PFRINGDIR}/libpfring.a
 
 
 #
 # Search directories
 #
-PFRING_KERNEL=../../kernel
-INCLUDE    = -I${PFRING_KERNEL} -I${PFRING_KERNEL}/plugins -I${PFRINGDIR} -I${PCAPDIR}
+#PFRING_KERNEL=../../kernel
+#INCLUDE    = -I${PFRING_KERNEL} -I${PFRING_KERNEL}/plugins -I${PFRINGDIR} -I${PCAPDIR}
+INCLUDE    = -I${PFRINGDIR}
 
 #
 # C compiler and flags
@@ -29,7 +30,7 @@ INCLUDE    = -I${PFRING_KERNEL} -I${PFRING_KERNEL}/plugins -I${PFRINGDIR} -I${PC
 # CROSS_COMPILE=arm-mv5sft-linux-gnueabi-
 #
 CC         = ${CROSS_COMPILE}gcc #--platform=native
-CFLAGS     = @CFLAGS@ ${O_FLAG} -Wall ${INCLUDE} ${DNA_DEFINE} @HAVE_ZERO@ @HAVE_BPF@ -O2 # -g
+CFLAGS     = @CFLAGS@ ${O_FLAG} -Wall ${INCLUDE} -O2 # -g
 # LDFLAGS  =
 
 #
