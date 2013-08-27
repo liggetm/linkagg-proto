@@ -11,7 +11,7 @@ INSTDIR   = ${DESTDIR}/@INSTALL_PREFIX@
 #
 # Search directories
 #
-INCLUDE   = -I../../kernel -I../../vPF_RING/guest/kernel @BPF_INCLUDE@
+INCLUDE   = -I../ 
 
 #
 # Zero ToolKit
@@ -60,7 +60,7 @@ SYSLIBS   = -lpthread @SYSLIBS@
 STATICLIB  = libpfring.a
 DYNAMICLIB = libpfring.so
 TARGETS    = ${STATICLIB} ${DYNAMICLIB}
-RING_H     = ../../kernel/linux/pf_ring.h
+RING_H     = ../linux/pf_ring.h
 
 all: ${TARGETS}
 
