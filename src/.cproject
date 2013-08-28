@@ -14,11 +14,11 @@
 				</extensions>
 			</storageModule>
 			<storageModule moduleId="cdtBuildSystem" version="4.0.0">
-				<configuration buildProperties="" id="cdt.managedbuild.toolchain.gnu.base.2141218835" name="Default" parent="org.eclipse.cdt.build.core.emptycfg">
+				<configuration artifactName="linkagg-proto" buildProperties="" description="" id="cdt.managedbuild.toolchain.gnu.base.2141218835" name="Default" parent="org.eclipse.cdt.build.core.emptycfg">
 					<folderInfo id="cdt.managedbuild.toolchain.gnu.base.2141218835.2044749032" name="/" resourcePath="">
 						<toolChain id="cdt.managedbuild.toolchain.gnu.base.397169838" name="cdt.managedbuild.toolchain.gnu.base" superClass="cdt.managedbuild.toolchain.gnu.base">
 							<targetPlatform archList="all" binaryParser="org.eclipse.cdt.core.ELF" id="cdt.managedbuild.target.gnu.platform.base.1963338823" name="Debug Platform" osList="linux,hpux,aix,qnx" superClass="cdt.managedbuild.target.gnu.platform.base"/>
-							<builder id="cdt.managedbuild.target.gnu.builder.base.490957107" managedBuildOn="false" name="Gnu Make Builder.Default" superClass="cdt.managedbuild.target.gnu.builder.base"/>
+							<builder id="cdt.managedbuild.target.gnu.builder.base.490957107" keepEnvironmentInBuildfile="false" managedBuildOn="false" name="Gnu Make Builder" superClass="cdt.managedbuild.target.gnu.builder.base"/>
 							<tool id="cdt.managedbuild.tool.gnu.archiver.base.940742635" name="GCC Archiver" superClass="cdt.managedbuild.tool.gnu.archiver.base"/>
 							<tool id="cdt.managedbuild.tool.gnu.cpp.compiler.base.166970981" name="GCC C++ Compiler" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.base">
 								<inputType id="cdt.managedbuild.tool.gnu.cpp.compiler.input.1709806737" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.input"/>
@@ -28,6 +28,14 @@
 							</tool>
 							<tool id="cdt.managedbuild.tool.gnu.c.linker.base.1645782398" name="GCC C Linker" superClass="cdt.managedbuild.tool.gnu.c.linker.base"/>
 							<tool id="cdt.managedbuild.tool.gnu.cpp.linker.base.454059173" name="GCC C++ Linker" superClass="cdt.managedbuild.tool.gnu.cpp.linker.base">
+								<option id="gnu.cpp.link.option.paths.1120357083" name="Library search path (-L)" superClass="gnu.cpp.link.option.paths" valueType="libPaths">
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/linkagg-proto/thirdParty/pfring/linux}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/linkagg-proto/thirdParty/pfring/lib}&quot;"/>
+								</option>
+								<option id="gnu.cpp.link.option.libs.624159915" superClass="gnu.cpp.link.option.libs" valueType="libs">
+									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="&quot;${workspace_loc:/linkagg-proto/thirdParty/pfring/linux/pf_ring.h}&quot;"/>
+									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="&quot;${workspace_loc:/linkagg-proto/thirdParty/pfring/lib/pfring.h}&quot;"/>
+								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.cpp.linker.input.401606674" superClass="cdt.managedbuild.tool.gnu.cpp.linker.input">
 									<additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
 									<additionalInput kind="additionalinput" paths="$(LIBS)"/>
@@ -38,6 +46,12 @@
 							</tool>
 						</toolChain>
 					</folderInfo>
+					<fileInfo id="cdt.managedbuild.toolchain.gnu.base.2141218835.816066892" name="pfcount.c" rcbsApplicability="disable" resourcePath="pfcount.c" toolsToInvoke="cdt.managedbuild.tool.gnu.c.compiler.base.702395086.1112750768">
+						<tool id="cdt.managedbuild.tool.gnu.c.compiler.base.702395086.1112750768" name="GCC C Compiler" superClass="cdt.managedbuild.tool.gnu.c.compiler.base.702395086">
+							<option id="gnu.c.compiler.option.include.paths.601663537" name="Include paths (-I)" superClass="gnu.c.compiler.option.include.paths" valueType="includePath"/>
+							<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.1648163169" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
+						</tool>
+					</fileInfo>
 				</configuration>
 			</storageModule>
 			<storageModule moduleId="org.eclipse.cdt.core.externalSettings"/>
@@ -45,9 +59,6 @@
 	</storageModule>
 	<storageModule moduleId="cdtBuildSystem" version="4.0.0">
 		<project id="linkagg-proto.null.777948359" name="linkagg-proto"/>
-	</storageModule>
-	<storageModule moduleId="scannerConfiguration">
-		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
 	</storageModule>
 	<storageModule moduleId="org.eclipse.cdt.core.LanguageSettingsProviders"/>
 	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets">
@@ -61,5 +72,15 @@
 				<runAllBuilders>true</runAllBuilders>
 			</target>
 		</buildTargets>
+	</storageModule>
+	<storageModule moduleId="refreshScope"/>
+	<storageModule moduleId="scannerConfiguration">
+		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+		<scannerConfigBuildInfo instanceId="cdt.managedbuild.toolchain.gnu.base.2141218835;cdt.managedbuild.toolchain.gnu.base.2141218835.2044749032;cdt.managedbuild.tool.gnu.cpp.compiler.base.166970981;cdt.managedbuild.tool.gnu.cpp.compiler.input.1709806737">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+		</scannerConfigBuildInfo>
+		<scannerConfigBuildInfo instanceId="cdt.managedbuild.toolchain.gnu.base.2141218835;cdt.managedbuild.toolchain.gnu.base.2141218835.2044749032;cdt.managedbuild.tool.gnu.c.compiler.base.702395086;cdt.managedbuild.tool.gnu.c.compiler.input.1116014568">
+			<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+		</scannerConfigBuildInfo>
 	</storageModule>
 </cproject>

@@ -6,7 +6,7 @@ LIBPFRING	= ./thirdParty/pfring/lib/libpfring.a
 LIBPCAP		= ./thirdParty/pfring/libpcap/libpcap.a
 LIBS		= ${LIBPFRING} ${LIBPCAP}
 
-all: kernel-mod libpfring libpcap pfcount
+all: kernel-mod libpfring libpcap pfcount pfsend
 
 kernel-mod:
 	cd thirdParty/pfring/kernel && \
@@ -25,8 +25,12 @@ libpcap:
 pfcount: pfcount.o ${LIBPFRING}
 	${CC} ${CFLAGS} ${LINKS} pfcount.o ${LIBS} -o $@
 	
+pfsend: pfsend.o ${LIBPFRING}
+	${CC} ${CFLAGS} ${LINKS} pfsend.o ${LIBS} -o $@
+	
 clean:
-	/bin/rm -f pfcount 
+	/bin/rm -f pfcount.o pfcount
+	/bin/rm -f pfsend.o pfsend
 	cd thirdParty/pfring/lib && \
 	$(MAKE) clean
 	cd ../../../
