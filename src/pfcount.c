@@ -44,12 +44,6 @@
 #include <monetary.h>
 #include <locale.h>
 
-#ifdef ENABLE_BPF
-#include <pcap/pcap.h>
-#include <pcap/bpf.h>
-//#include <linux/filter.h>
-#endif
-
 #include "pfring.h"
 #include "pfutils.c"
 
@@ -66,12 +60,6 @@ pthread_rwlock_t statsLock;
 
 static struct timeval startTime;
 unsigned long long numPkts[MAX_NUM_THREADS] = { 0 }, numBytes[MAX_NUM_THREADS] = { 0 };
-
-#ifdef ENABLE_BPF
-unsigned long long numPktsFiltered[MAX_NUM_THREADS] = { 0 };
-struct bpf_program filter;
-u_int8_t userspace_bpf = 0;
-#endif
 
 u_int8_t wait_for_packet = 1, do_shutdown = 0, add_drop_rule = 0;
 u_int8_t use_extended_pkt_header = 0, touch_payload = 0, enable_hw_timestamp = 0, dont_strip_timestamps = 0;
@@ -103,16 +91,10 @@ void print_stats() {
     double thpt;
     int i;
     unsigned long long nBytes = 0, nPkts = 0;
-#ifdef ENABLE_BPF
-    unsigned long long nPktsFiltered = 0;
-#endif
 
     for(i=0; i < num_threads; i++) {
       nBytes += numBytes[i];
       nPkts += numPkts[i];
-#ifdef ENABLE_BPF
-      nPktsFiltered += numPktsFiltered[i];
-#endif
     }
 
     deltaMillisecStart = delta_time(&endTime, &startTime);
@@ -120,16 +102,10 @@ void print_stats() {
              "Duration: %s\n"
              "Packets:  %lu\n"
              "Dropped:  %lu\n"
-#ifdef ENABLE_BPF
-	     "Filtered: %lu\n"
-#endif
              "Bytes:    %lu\n",
              sec2dhms((deltaMillisecStart/1000), timebuf, sizeof(timebuf)),
              (long unsigned int) pfringStat.recv,
              (long unsigned int) pfringStat.drop,
-#ifdef ENABLE_BPF
-	     (long unsigned int) nPktsFiltered,
-#endif
              (long unsigned int) nBytes);
     pfring_set_application_stats(pd, buf);
 
@@ -137,15 +113,9 @@ void print_stats() {
 
     fprintf(stderr, "=========================\n"
 	    "Absolute Stats: [%u pkts rcvd]"
-#ifdef ENABLE_BPF
-	    "[%u pkts filtered]"
-#endif
 	    "[%u pkts dropped]\n"
 	    "Total Pkts=%u/Dropped=%.1f %%\n",
 	    (unsigned int)pfringStat.recv, 
-#ifdef ENABLE_BPF
-	    (unsigned int)nPktsFiltered,
-#endif
 	    (unsigned int)pfringStat.drop,
 	    (unsigned int)(pfringStat.recv+pfringStat.drop),
 	    pfringStat.recv == 0 ? 0 :
@@ -356,29 +326,6 @@ char* proto2str(u_short proto) {
   }
 }
 
-/* ****************************************************** */
-
-#ifdef ENABLE_BPF
-int parse_bpf_filter(char *filter_buffer, u_int caplen) {
-  if(pcap_compile_nopcap(caplen,        /* snaplen_arg */
-                         DLT_EN10MB,    /* linktype_arg */
-                         &filter,       /* program */
-                         filter_buffer, /* const char *buf */
-                         0,             /* optimize */
-                         0              /* mask */
-                         ) == -1) {
-    return -1;
-  }
-
-  if(filter.bf_insns == NULL)
-    return -1;
-
-  return 0;
-}
-#endif
-
-/* ****************************************************** */
-
 static int32_t thiszone;
 
 void dummyProcesssPacket(const struct pfring_pkthdr *h, 
@@ -386,13 +333,6 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h,
   long threadId = (long)user_bytes;
 
   numPkts[threadId]++, numBytes[threadId] += h->len+24 /* 8 Preamble + 4 CRC + 12 IFG */;
-
-#ifdef ENABLE_BPF
-  if (userspace_bpf && bpf_filter(filter.bf_insns, p, h->caplen, h->len) == 0)
-    return; /* rejected */
-  
-  numPktsFiltered[threadId]++;
-#endif
 
   if(touch_payload) {
     volatile int __attribute__ ((unused)) i;
@@ -558,9 +498,6 @@ void printHelp(void) {
 	 "                - ethX@Y for channels\n"
 	 "                - dnaX for DNA-based adapters\n"
 	 "                - dnacluster:X for DNA cluster Id X\n"
-#ifdef HAVE_DAG
-	 "                - dag:dagX:Y for Endace DAG cards\n"
-#endif
 	 );
   printf("-n <threads>    Number of polling threads (default %d)\n", num_threads);
   printf("-f <filter>     [BPF filter]\n"); 
@@ -578,9 +515,6 @@ void printHelp(void) {
   printf("-s              Enable hw timestamping\n");
   printf("-S              Do not strip hw timestamps (if present)\n");
   printf("-t              Touch payload (for force packet load on cache)\n");
-#ifdef ENABLE_QAT_PM
-  printf("-x <string>     Search string on payload. You can specify this option multiple times.\n");
-#endif
   printf("-u <1|2>        For each incoming packet add a drop rule (1=hash, 2=wildcard rule)\n");
   printf("-v <mode>       Verbose [1: verbose, 2: very verbose (print packet payload)]\n");
   exit(0);
@@ -615,12 +549,6 @@ void* packet_consumer_thread(void* _id) {
     if((rc = pfring_recv(pd, &buffer_p, NO_ZC_BUFFER_LEN, &hdr, wait_for_packet)) > 0) {
       if(do_shutdown) break;
       dummyProcesssPacket(&hdr, buffer, (u_char*)thread_id);
-#ifdef TEST_SEND
-      buffer[0] = 0x99;
-      buffer[1] = 0x98;
-      buffer[2] = 0x97;
-      pfring_send(pd, buffer, hdr.caplen);
-#endif
     } else {
       if(wait_for_packet == 0) sched_yield();
     } 
@@ -652,10 +580,6 @@ void* packet_consumer_thread(void* _id) {
 
 int main(int argc, char* argv[]) {
   char *device = NULL, c, buf[32], path[256] = { 0 }, *reflector_device = NULL;
-#ifdef ENABLE_QAT_PM
-  char *to_search[MAX_NUM_STRINGS] = { NULL };
-  u_int num_strings_to_search = 0;
-#endif
   u_char mac_address[6] = { 0 };
   int promisc, snaplen = DEFAULT_SNAPLEN, rc;
   u_int clusterId = 0;
@@ -664,9 +588,6 @@ int main(int argc, char* argv[]) {
   packet_direction direction = rx_and_tx_direction;
   u_int16_t watermark = 0, poll_duration = 0, 
     cpu_percentage = 0, rehash_rss = 0;
-#ifdef ENABLE_BPF
-  char *bpfFilter = NULL;
-#endif
 
 #if 0
   struct sched_param schedparam;
@@ -678,41 +599,12 @@ int main(int argc, char* argv[]) {
     printf("error while setting the scheduler, errno=%i\n", errno);
     exit(1);
   }
-
-#undef TEST_PROCESSOR_AFFINITY
-#ifdef TEST_PROCESSOR_AFFINITY
-  {
-    unsigned long new_mask = 1;
-    unsigned int len = sizeof(new_mask);
-    unsigned long cur_mask;
-    pid_t p = 0; /* current process */
-    int ret;
-
-    ret = sched_getaffinity(p, len, NULL);
-    printf(" sched_getaffinity = %d, len = %u\n", ret, len);
-
-    ret = sched_getaffinity(p, len, &cur_mask);
-    printf(" sched_getaffinity = %d, cur_mask = %08lx\n", ret, cur_mask);
-
-    ret = sched_setaffinity(p, len, &new_mask);
-    printf(" sched_setaffinity = %d, new_mask = %08lx\n", ret, new_mask);
-
-    ret = sched_getaffinity(p, len, &cur_mask);
-    printf(" sched_getaffinity = %d, cur_mask = %08lx\n", ret, cur_mask);
-  }
-#endif
 #endif
 
   startTime.tv_sec = 0;
   thiszone = gmt2local(0);
 
   while((c = getopt(argc,argv,"hi:c:d:l:v:ae:n:w:p:b:rg:u:mtsS"
-#ifdef ENABLE_QAT_PM
-		    "x:"
-#endif
-#ifdef ENABLE_BPF
-		    "f:"
-#endif
         )) != '?') {
     if((c == 255) || (c == -1)) break;
 
@@ -756,11 +648,6 @@ int main(int argc, char* argv[]) {
       else
 	printHelp();
       break;
-#ifdef ENABLE_BPF
-    case 'f':
-      bpfFilter = strdup(optarg);
-      break;     
-#endif
     case 'w':
       watermark = atoi(optarg);
       break;
@@ -799,15 +686,6 @@ int main(int argc, char* argv[]) {
 	add_drop_rule = 2;
 	break;
       }
-
-#ifdef ENABLE_QAT_PM
-    case 'x':
-      if(num_strings_to_search >= MAX_NUM_STRINGS) {
-	printf("Too many strings specified (-x): maximum %u\n", MAX_NUM_STRINGS);
-      } else
-	to_search[num_strings_to_search++] = strdup(optarg);
-      break;
-#endif
     }
   }
   
@@ -879,49 +757,6 @@ int main(int argc, char* argv[]) {
       fprintf(stderr, "Error setting device clock\n");
   }
 
-#ifdef ENABLE_BPF
-  if(bpfFilter != NULL) {
-
-    if (pd->dna.dna_mapped_device) {
-
-      if (parse_bpf_filter(bpfFilter, snaplen) == 0) {
-        userspace_bpf = 1;
-        printf("Successfully set BPF filter '%s'\n", bpfFilter);
-      } else
-        printf("Error compiling BPF filter '%s'\n", bpfFilter);
-
-    } else {
-
-      rc = pfring_set_bpf_filter(pd, bpfFilter);
-      if(rc != 0)
-        printf("pfring_set_bpf_filter(%s) returned %d\n", bpfFilter, rc);
-      else
-        printf("Successfully set BPF filter '%s'\n", bpfFilter);
-
-#if 0
-      rc = pfring_remove_bpf_filter(pd);
-      if(rc != 0)
-        printf("pfring_remove_bpf_filter() returned %d\n", rc);
-      else
-        printf("Successfully removed BPF filter '%s'\n", bpfFilter);
-#endif
-    }
-  }
-#endif
-
-#ifdef ENABLE_QAT_PM
-  if(num_strings_to_search > 0) {
-    int i;
-
-    for(i=0; i<num_strings_to_search; i++) {
-      rc = pfring_search_payload(pd, to_search[i]);
-      if(rc < 0)
-	printf("pfring_search_payload() returned %d\n", rc);
-      else
-	printf("Successfully added string to search '%s'\n", to_search[i]);  
-    }
-  }
-#endif
 
   if(clusterId > 0) {
     rc = pfring_set_cluster(pd, clusterId, cluster_round_robin);
