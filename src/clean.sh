@@ -1,6 +1,13 @@
 SRCPATH=$(pwd)
 
 #######################################################
+# Clean pfring modules
+#######################################################
+cd thirdParty/pfring/kernel
+make clean
+cd ${SRCPATH}
+
+#######################################################
 # Clean pfring library
 #######################################################
 cd thirdParty/pfring/lib
