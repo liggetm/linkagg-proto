@@ -1,0 +1,11 @@
+/.pf_ring.ko.cmd
+/.pf_ring.ko.unsigned.cmd
+/.pf_ring.mod.o.cmd
+/.pf_ring.o.cmd
+/Module.symvers
+/modules.order
+/pf_ring.ko
+/pf_ring.ko.unsigned
+/pf_ring.mod.c
+/pf_ring.mod.o
+/pf_ring.o

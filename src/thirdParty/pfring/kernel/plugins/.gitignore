@@ -1,0 +1,9 @@
+/.dummy_plugin.ko.cmd
+/.dummy_plugin.ko.unsigned.cmd
+/.dummy_plugin.mod.o.cmd
+/.dummy_plugin.o.cmd
+/dummy_plugin.ko
+/dummy_plugin.ko.unsigned
+/dummy_plugin.mod.c
+/dummy_plugin.mod.o
+/dummy_plugin.o
