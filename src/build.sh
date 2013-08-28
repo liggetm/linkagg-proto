@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PWD=$(pwd)
+SRCPATH=$(pwd)
 
 #######################################################
 # Build pfring library
@@ -8,16 +8,16 @@ PWD=$(pwd)
 cd thirdParty/pfring/lib
 ./configure
 make
-cd ${PWD}
+cd ${SRCPATH}
 
 #######################################################
 # Build libpcap
 #######################################################
-#cd thirdParty/libpcap
-#make clean
-#./configure
-#make
-#cd ${PWD}
+cd thirdParty/pfring/libpcap
+make clean
+./configure
+make
+cd ${SRCPATH}
 
 
 
