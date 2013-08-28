@@ -13,11 +13,11 @@ cd ${PWD}
 #######################################################
 # Build libpcap
 #######################################################
-cd thirdParty/libpcap
-make clean
-./configure
-make
-cd ${PWD}
+#cd thirdParty/libpcap
+#make clean
+#./configure
+#make
+#cd ${PWD}
 
 
 

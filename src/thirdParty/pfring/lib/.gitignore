@@ -1,0 +1,7 @@
+*.o
+*.a
+Makefile
+config.h
+config.status
+config.log
+pfring_zero.h
