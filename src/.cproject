@@ -24,6 +24,10 @@
 								<inputType id="cdt.managedbuild.tool.gnu.cpp.compiler.input.1709806737" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.input"/>
 							</tool>
 							<tool id="cdt.managedbuild.tool.gnu.c.compiler.base.702395086" name="GCC C Compiler" superClass="cdt.managedbuild.tool.gnu.c.compiler.base">
+								<option id="gnu.c.compiler.option.include.paths.140600508" superClass="gnu.c.compiler.option.include.paths" valueType="includePath">
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/linkagg-proto/thirdParty/pfring/linux}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/linkagg-proto/thirdParty/pfring/lib}&quot;"/>
+								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.1116014568" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 							</tool>
 							<tool id="cdt.managedbuild.tool.gnu.c.linker.base.1645782398" name="GCC C Linker" superClass="cdt.managedbuild.tool.gnu.c.linker.base"/>
@@ -31,8 +35,9 @@
 								<option id="gnu.cpp.link.option.paths.1120357083" name="Library search path (-L)" superClass="gnu.cpp.link.option.paths" valueType="libPaths">
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/linkagg-proto/thirdParty/pfring/linux}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/linkagg-proto/thirdParty/pfring/lib}&quot;"/>
+									<listOptionValue builtIn="false" value="/usr/src/kernels/2.6.32-358.14.1.el6.x86_64"/>
 								</option>
-								<option id="gnu.cpp.link.option.libs.624159915" superClass="gnu.cpp.link.option.libs" valueType="libs">
+								<option id="gnu.cpp.link.option.libs.624159915" name="Libraries (-l)" superClass="gnu.cpp.link.option.libs" valueType="libs">
 									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="&quot;${workspace_loc:/linkagg-proto/thirdParty/pfring/linux/pf_ring.h}&quot;"/>
 									<listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="&quot;${workspace_loc:/linkagg-proto/thirdParty/pfring/lib/pfring.h}&quot;"/>
 								</option>
@@ -46,12 +51,6 @@
 							</tool>
 						</toolChain>
 					</folderInfo>
-					<fileInfo id="cdt.managedbuild.toolchain.gnu.base.2141218835.816066892" name="pfcount.c" rcbsApplicability="disable" resourcePath="pfcount.c" toolsToInvoke="cdt.managedbuild.tool.gnu.c.compiler.base.702395086.1112750768">
-						<tool id="cdt.managedbuild.tool.gnu.c.compiler.base.702395086.1112750768" name="GCC C Compiler" superClass="cdt.managedbuild.tool.gnu.c.compiler.base.702395086">
-							<option id="gnu.c.compiler.option.include.paths.601663537" name="Include paths (-I)" superClass="gnu.c.compiler.option.include.paths" valueType="includePath"/>
-							<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.1648163169" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
-						</tool>
-					</fileInfo>
 				</configuration>
 			</storageModule>
 			<storageModule moduleId="org.eclipse.cdt.core.externalSettings"/>

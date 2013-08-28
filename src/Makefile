@@ -1,24 +1,25 @@
 CC			= gcc
-INCLUDE		= -I thirdParty/pfring/kernel -I thirdParty/pfring/libpcap
+DIRPFRING	= ./thirdParty/pfring
+INCLUDE		= -I ${DIRPFRING}/kernel -I ${DIRPFRING}/libpcap
 LINKS		= -lpthread -lrt
 CFLAGS		= -Wall ${INCLUDE} -O2 
-LIBPFRING	= ./thirdParty/pfring/lib/libpfring.a
-LIBPCAP		= ./thirdParty/pfring/libpcap/libpcap.a
+LIBPFRING	= ${DIRPFRING}/lib/libpfring.a
+LIBPCAP		= ${DIRPFRING}/libpcap/libpcap.a
 LIBS		= ${LIBPFRING} ${LIBPCAP}
 
-all: kernel-mod libpfring libpcap pfcount pfsend
+all: kernel-mod libpfring libpcap pfcount pfsend linkaggtx
 
 kernel-mod:
-	cd thirdParty/pfring/kernel && \
+	cd ${DIRPFRING}/kernel && \
 	$(MAKE)
 
 libpfring:
-	cd thirdParty/pfring/lib && \
+	cd ${DIRPFRING}/lib && \
 	/bin/bash ./configure && \
 	$(MAKE)
 
 libpcap:
-	cd thirdParty/pfring/libpcap && \
+	cd ${DIRPFRING}/libpcap && \
 	/bin/bash ./configure && \
 	$(MAKE)
 	
@@ -27,15 +28,17 @@ pfcount: pfcount.o ${LIBPFRING}
 	
 pfsend: pfsend.o ${LIBPFRING}
 	${CC} ${CFLAGS} ${LINKS} pfsend.o ${LIBS} -o $@
+
+linkaggtx: linkaggtx.o ${LIBPFRING}
+	${CC} ${CFLAGS} ${LINKS} linkaggtx.o ${LIBS} -o $@
 	
 clean:
-	/bin/rm -f pfcount.o pfcount
-	/bin/rm -f pfsend.o pfsend
-	cd thirdParty/pfring/lib && \
+	/bin/rm -f *.o pfcount pfsend linkaggtx
+	cd ${DIRPFRING}/lib && \
 	$(MAKE) clean
 	cd ../../../
-	cd thirdParty/pfring/kernel && \
+	cd ${DIRPFRING}/kernel && \
 	$(MAKE) clean
 	cd ../../../
-	cd thirdParty/pfring/libpcap && \
+	cd ${DIRPFRING}/libpcap && \
 	$(MAKE) clean
