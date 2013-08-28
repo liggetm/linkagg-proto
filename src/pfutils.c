@@ -21,7 +21,7 @@
  *
  */
 
-#include "../lib/config.h"
+#include "thirdParty/pfring/lib/config.h"
 
 #ifndef __USE_GNU
 #define __USE_GNU
