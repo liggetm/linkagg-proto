@@ -325,21 +325,15 @@ static void forge_udp_packet(u_char *buffer, u_int buffer_len, u_int idx) {
 int main(int argc, char* argv[]) {
   char path[255] = { 0 };
   int c, i, verbose = 0, active_poll = 0;
-  u_int mac_a, mac_b, mac_c, mac_d, mac_e, mac_f;
   u_char buffer[9000];
   u_int32_t num_to_send = 0;
-  u_int16_t cpu_percentage = 0;
   double gbit_s = 0;
   ticks tick_start = 0, tick_delta = 0;
   struct packet *tosend;
   u_int num_tx_slots = 0;
-  int num_balanced_pkts = 1;
 
-  while((c = getopt(argc, argv, "b:hi:j:n:l:r:vm:w:zx:")) != -1) {
+  while((c = getopt(argc, argv, "hi:j:n:l:")) != -1) {
     switch(c) {
-    case 'b':
-      num_balanced_pkts = atoi(optarg);
-      break;
     case 'h':
       printHelp();
       break;
@@ -355,26 +349,13 @@ int main(int argc, char* argv[]) {
     case 'l':
       send_len = atoi(optarg);
       break;
-    case 'r':
-      sscanf(optarg, "%lf", &gbit_s);
-      break;
-    case 'm':
-      if(sscanf(optarg, "%02X:%02X:%02X:%02X:%02X:%02X", &mac_a, &mac_b, &mac_c, &mac_d, &mac_e, &mac_f) != 6) {
-	printf("Invalid MAC address format (XX:XX:XX:XX:XX:XX)\n");
-	return(0);
-      } else {
-	reforge_mac = 1;
-	mac_address[0] = mac_a, mac_address[1] = mac_b, mac_address[2] = mac_c;
-	mac_address[3] = mac_d, mac_address[4] = mac_e, mac_address[5] = mac_f;
-      }
-      break;
 
     default:
       printHelp();
     }
   }
 
-  if((in_dev == NULL) || (num_balanced_pkts < 1) || (optind < argc)) /* Extra argument */
+  if((in_dev == NULL) || (optind < argc)) /* Extra argument */
     printHelp();
 
   printf("Sending packets on %s\n", in_dev);
@@ -418,40 +399,35 @@ int main(int argc, char* argv[]) {
 	  send_len = stdin_packet_len;
   }
 
-  for (i = 0; i < num_balanced_pkts; i++) {
 
-	  if (stdin_packet_len <= 0)
-		  forge_udp_packet(buffer, sizeof(buffer), i);
-	  /* TODO else: reforge IP only */
-
-	  p = (struct packet *) malloc(sizeof(struct packet));
-	  if(p) {
-		  if (i == 0) pkt_head = p;
-
-		  p->len = send_len;
-		  p->ticks_from_beginning = 0;
-		  p->next = pkt_head;
-		  p->pkt = (char*)malloc(p->len);
-
-		  if (p->pkt == NULL) {
-			  printf("Not enough memory\n");
-			  break;
-		  }
-
-		  memcpy(p->pkt, buffer, send_len);
-
-		  if (last != NULL) last->next = p;
-		  last = p;
-	  } else {
-		  /* oops, couldn't allocate memory */
-		  fprintf(stderr, "Unable to allocate memory requested (%s)\n", strerror(errno));
-		  return (-1);
-	  }
+  if (stdin_packet_len <= 0) {
+	  printf("Reforging udp packet\n");
+	  forge_udp_packet(buffer, sizeof(buffer), i);
   }
 
-  if(wait_for_packet && (cpu_percentage > 0)) {
-    if(cpu_percentage > 99) cpu_percentage = 99;
-    pfring_config(cpu_percentage);
+  /* TODO else: reforge IP only */
+
+  p = (struct packet *) malloc(sizeof(struct packet));
+  if(p) {
+	  if (i == 0) pkt_head = p;
+
+	  p->len = send_len;
+	  p->ticks_from_beginning = 0;
+	  p->next = pkt_head;
+	  p->pkt = (char*)malloc(p->len);
+
+	  if (p->pkt == NULL) {
+		  printf("Not enough memory\n");
+	  }
+
+	  memcpy(p->pkt, buffer, send_len);
+
+	  if (last != NULL) last->next = p;
+	  last = p;
+  } else {
+	  /* oops, couldn't allocate memory */
+	  fprintf(stderr, "Unable to allocate memory requested (%s)\n", strerror(errno));
+	  return (-1);
   }
 
   if(!verbose) {
