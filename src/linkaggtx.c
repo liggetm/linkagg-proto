@@ -93,6 +93,7 @@ int reforge_mac = 0;
 char mac_address[6];
 int send_len = 60;
 int if_index = -1;
+u_char buffer[9000];
 
 /* *************************************** */
 
@@ -299,11 +300,36 @@ static void forge_udp_packet(u_char *buffer, u_int buffer_len, u_int idx) {
 							 IPPROTO_UDP + ntohs(udp_header->len)))));
 }
 
+static struct packet* create_packet() {
+	struct packet *p = (struct packet *) malloc(sizeof(struct packet));
+	struct packet *last = NULL;
+	  if(p) {
+		  pkt_head = p;
+
+		  p->len = send_len;
+		  p->ticks_from_beginning = 0;
+		  p->next = pkt_head;
+		  p->pkt = (char*)malloc(p->len);
+
+		  if (p->pkt == NULL) {
+			  printf("Not enough memory\n");
+		  }
+
+		  memcpy(p->pkt, buffer, send_len);
+
+		  if (last != NULL) last->next = p;
+		  last = p;
+	  } else {
+		  /* oops, couldn't allocate memory */
+		  fprintf(stderr, "Unable to allocate memory requested (%s)\n", strerror(errno));
+	  }
+	  return p;
+}
+
 /* *************************************** */
 
 int main(int argc, char* argv[]) {
   int c, i = 0;
-  u_char buffer[9000];
   u_int32_t num_to_send = 0;
   struct packet *tosend;
 
@@ -363,10 +389,7 @@ int main(int argc, char* argv[]) {
   signal(SIGTERM, sigproc);
   signal(SIGINT, sigproc);
 
-  if(send_len < 60)
-    send_len = 60;
-
-  struct packet *p = NULL, *last = NULL;
+  struct packet *p = NULL;
   int stdin_packet_len;
 
   if ((stdin_packet_len = read_packet_hex(buffer, sizeof(buffer))) > 0) {
@@ -374,31 +397,10 @@ int main(int argc, char* argv[]) {
   }
 
   if (stdin_packet_len <= 0) {
-	  printf("Reforging udp packet\n");
 	  forge_udp_packet(buffer, sizeof(buffer), i);
   }
 
-  p = (struct packet *) malloc(sizeof(struct packet));
-  if(p) {
-	  if (i == 0) pkt_head = p;
-
-	  p->len = send_len;
-	  p->ticks_from_beginning = 0;
-	  p->next = pkt_head;
-	  p->pkt = (char*)malloc(p->len);
-
-	  if (p->pkt == NULL) {
-		  printf("Not enough memory\n");
-	  }
-
-	  memcpy(p->pkt, buffer, send_len);
-
-	  if (last != NULL) last->next = p;
-	  last = p;
-  } else {
-	  /* oops, couldn't allocate memory */
-	  fprintf(stderr, "Unable to allocate memory requested (%s)\n", strerror(errno));
-  }
+  p = create_packet();
 
   gettimeofday(&startTime, NULL);
   memcpy(&lastTime, &startTime, sizeof(startTime));
