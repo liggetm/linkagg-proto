@@ -46,6 +46,7 @@
 #include "pfring.h"
 #include "pfutils.c"
 
+static const int MAX_DEVICES_SUPPORTED = 4;
 struct packet {
   u_int16_t len;
   u_int64_t ticks_from_beginning;
@@ -85,7 +86,6 @@ struct udp_header {
 struct packet *pkt_head = NULL;
 pfring_stat pfringStats;
 char *in_dev = NULL;
-char *in_devother = NULL;
 u_int8_t wait_for_packet = 1, do_shutdown = 0;
 u_int64_t num_pkt_good_sent = 0, last_num_pkt_good_sent = 0;
 u_int64_t num_bytes_good_sent = 0, last_num_bytes_good_sent = 0;
@@ -234,7 +234,7 @@ static void forge_udp_packet(u_char *buffer, u_int buffer_len, u_int idx) {
 
   ip_header = (struct ip_header*) &buffer[sizeof(struct ether_header)];
   ip_header->ihl = 5;
-  ip_header->version = 4;
+	ip_header->version = MAX_DEVICES_SUPPORTED;
   ip_header->tos = 0;
   ip_header->tot_len = htons(send_len-sizeof(struct ether_header));
   ip_header->id = htons(2012);
@@ -331,7 +331,7 @@ static void disable_rings(pfring* rings[]) {
 static void transmit_packets(pfring* rings[]) {
 
 	int device_idx = 0, i = 0;
-	printf ("\n\nStarting transmission...\n");
+	printf ("\nStarting transmission...\n");
 
 	  while((num_to_send == 0) || (i < num_to_send)) {
 	    int rc;
@@ -362,7 +362,7 @@ static void transmit_packets(pfring* rings[]) {
 
 	  }
 
-	  printf ("\n\n...ended transmission of %u packets.\n", num_to_send);
+	  printf ("\n...ended transmission of %u packets.\n", num_to_send);
 
 }
 
@@ -374,16 +374,13 @@ void *transmit_thread(void *arg) {
 int main(int argc, char* argv[]) {
   int c;
 
-  while((c = getopt(argc, argv, "hi:j:n:l:")) != -1) {
+  while((c = getopt(argc, argv, "hi:n:l:")) != -1) {
     switch(c) {
     case 'h':
       printHelp();
       break;
     case 'i':
       in_dev = strdup(optarg);
-      break;
-    case 'j':
-      in_devother = strdup(optarg);
       break;
     case 'n':
       num_to_send = atoi(optarg);
@@ -400,9 +397,32 @@ int main(int argc, char* argv[]) {
   if(optind < argc) /* Extra argument */
     printHelp();
 
-  /* TODO: remove hardcoded devices */
-  char* device_names[2] = { "eth1", "eth2" };
-  num_of_devices = sizeof(device_names)/sizeof(device_names[0]);
+  const char separator[2] = ",";
+  char *token = strtok(in_dev, separator);	/* Get first device */
+  char* devices[MAX_DEVICES_SUPPORTED];
+  devices[0] = token;
+  int i=1;
+
+  while( token != NULL )
+  {
+	  if(i <= MAX_DEVICES_SUPPORTED) {
+		  token = strtok(NULL, separator);
+		  devices[i] = token;
+		  i++;
+	  } else {
+		  printf("Maximum 4 comma separated device names. eg; eth1,eth2,eth3,eth4\n");
+		  return(1);
+	  }
+  }
+
+  num_of_devices = i - 1;
+  char* device_names[num_of_devices];
+
+  i = 0;
+  for(i = 0; i < num_of_devices; i++) {
+	  device_names[i] = devices[i];
+  }
+
   pfring* rings[num_of_devices];
   enable_rings(device_names, rings);
 
