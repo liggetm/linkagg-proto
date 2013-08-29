@@ -84,7 +84,7 @@ struct udp_header {
   u_int16_t	check;		/* udp checksum */
 };
 
-struct transmit_device {
+struct tx_device {
 	char* name;		/* standard device name eg; eth0 */
 	bool enabled;	/* is device used for transmission */
 	pfring* ring;
@@ -104,6 +104,7 @@ u_char buffer[9000];
 u_int32_t num_to_send = 0;
 struct packet *tosend;
 int num_of_devices;
+pthread_mutex_t device_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* *************************************** */
 
@@ -304,7 +305,7 @@ static void setup_packets() {
 /*
  * Open ring for the given device.
  */
-static void enable_ring(struct transmit_device *device_to_enable) {
+static void enable_ring(struct tx_device *device_to_enable) {
 
 	pfring *ring = pfring_open(device_to_enable->name, 1500, 0);
 
@@ -323,23 +324,43 @@ static void enable_ring(struct transmit_device *device_to_enable) {
 	}
 }
 
-static void disable_ring(struct transmit_device *dev) {
+static void disable_ring(struct tx_device *dev) {
 	pfring_close(dev->ring);
 	dev->ring = NULL;
 	//print_stats(rings[k], device_names[k]);
 }
 
-static void transmit_packets(struct transmit_device* transmission_devices[]) {
+static void tx_packets(struct tx_device* enabled_devices[]) {
 
 	int device_idx = 0, i = 0;
+	bool tx_ready = false;
+
+	for(i = 0; i < num_of_devices; i++) {
+		if(!tx_ready && (enabled_devices[i]->enabled)) {
+			tx_ready = true;
+		}
+	}
+
+	if(!tx_ready) {
+		printf("No available tx devices\n");
+		exit(1);
+	}
+
 	printf ("\nStarting transmission...\n");
 
 	  while((num_to_send == 0) || (i < num_to_send)) {
 	    int rc;
 
+	    while(!enabled_devices[device_idx]->enabled) {
+	    	device_idx++;
+	    	if(device_idx == num_of_devices)
+	    		device_idx = 0;
+	    }
+
 	  redo:
 
-	  rc = pfring_send(transmission_devices[device_idx]->ring, tosend->pkt, tosend->len, 0);
+		  rc = pfring_send(enabled_devices[device_idx]->ring, tosend->pkt, tosend->len, 0);
+
 
 	    if(rc == PF_RING_ERROR_INVALID_ARGUMENT){
 	      printf("Attempting to send invalid packet");
@@ -356,9 +377,9 @@ static void transmit_packets(struct transmit_device* transmission_devices[]) {
 
 	    if(num_to_send > 0)
 	    	i++;
-	    device_idx++;
-	    if(device_idx == num_of_devices)
-	    	device_idx = 0;
+    	device_idx++;
+    	if(device_idx == num_of_devices)
+    		device_idx = 0;
 
 	  }
 
@@ -366,8 +387,8 @@ static void transmit_packets(struct transmit_device* transmission_devices[]) {
 
 }
 
-void *transmit_thread(void *arg) {
-	transmit_packets((struct transmit_device**) arg);
+void *tx_thread(void *arg) {
+	tx_packets((struct tx_device**) arg);
 	return(0);
 }
 
@@ -415,10 +436,10 @@ int main(int argc, char* argv[]) {
   }
 
   num_of_devices = (i - 1);
-  struct transmit_device *device_list[num_of_devices];
+  struct tx_device *device_list[num_of_devices];
 
   for(i = 0; i < num_of_devices; i++) {
-	  struct transmit_device *dev = malloc(sizeof(struct transmit_device));
+	  struct tx_device *dev = malloc(sizeof(struct tx_device));
 	  dev->name = device_name_list[i];
 	  dev->enabled = true;
 	  enable_ring(dev);
@@ -437,9 +458,18 @@ int main(int argc, char* argv[]) {
   memcpy(&lastTime, &startTime, sizeof(startTime));
 
   pthread_t pth;
-  pthread_create(&pth, NULL, transmit_thread, &device_list);
+  pthread_create(&pth, NULL, tx_thread, &device_list);
 
   //TODO: add functionality to dynamically change rings.
+  char answer;
+  scanf("%c",&answer);
+  if('-' == answer) {
+	  printf("device removed\n");
+	  pthread_mutex_lock(&device_mutex);
+	  device_list[0]->enabled = false;
+	  pthread_mutex_unlock(&device_mutex);
+  }
+
 
   pthread_join(pth, NULL);
   for(i = 0; i < num_of_devices; i++) {
