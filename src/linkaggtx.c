@@ -302,40 +302,34 @@ static void setup_packets() {
 /* *************************************** */
 
 /*
- * Open and enable the list of devices
+ * Open ring for the given device.
  */
-static void enable_rings(char* devices[], pfring* rings[]) {
+static void enable_ring(struct transmit_device *device_to_enable) {
 
-	int i = 0;
-	for(i=0; i < num_of_devices; i++) {
+	pfring *ring = pfring_open(device_to_enable->name, 1500, 0);
 
-		pfring *ring = pfring_open(devices[i], 1500, 0);
+	if(ring == NULL) {
+		printf("pfring_open %s error [%s]\n", device_to_enable->name, strerror(errno));
+	} else {
+		pfring_set_socket_mode(ring, send_only_mode);
 
-		if(ring == NULL) {
-			printf("pfring_open %s error [%s]\n", (char *) devices[i], strerror(errno));
+		if(pfring_enable_ring(ring) != 0) {
+			printf("Unable to enable ring :-(\n");
+			pfring_close(ring);
 		} else {
-			printf("Sending packets on %s\n", (char *)devices[i]);
-			pfring_set_socket_mode(ring, send_only_mode);
-
-			if(pfring_enable_ring(ring) != 0) {
-				printf("Unable to enable ring :-(\n");
-				pfring_close(ring);
-			} else {
-				rings[i] = ring;
-			}
+			device_to_enable->ring=ring;
+			printf("Sending packets on %s\n", device_to_enable->name);
 		}
 	}
 }
 
-static void disable_rings(pfring* rings[]) {
-	  int k = 0;
-	  for(k=0; k < num_of_devices; k++) {
-		  pfring_close(rings[k]);
-		  //print_stats(rings[k], device_names[k]);
-	  }
+static void disable_ring(struct transmit_device *dev) {
+	pfring_close(dev->ring);
+	dev->ring = NULL;
+	//print_stats(rings[k], device_names[k]);
 }
 
-static void transmit_packets(pfring* rings[]) {
+static void transmit_packets(struct transmit_device* transmission_devices[]) {
 
 	int device_idx = 0, i = 0;
 	printf ("\nStarting transmission...\n");
@@ -345,8 +339,7 @@ static void transmit_packets(pfring* rings[]) {
 
 	  redo:
 
-	  //printf("num_to_send = %u\n", num_to_send);
-	  rc = pfring_send(rings[device_idx], tosend->pkt, tosend->len, 0);
+	  rc = pfring_send(transmission_devices[device_idx]->ring, tosend->pkt, tosend->len, 0);
 
 	    if(rc == PF_RING_ERROR_INVALID_ARGUMENT){
 	      printf("Attempting to send invalid packet");
@@ -374,7 +367,7 @@ static void transmit_packets(pfring* rings[]) {
 }
 
 void *transmit_thread(void *arg) {
-	transmit_packets((pfring**) arg);
+	transmit_packets((struct transmit_device**) arg);
 	return(0);
 }
 
@@ -402,7 +395,7 @@ int main(int argc, char* argv[]) {
   }
 
   if(optind < argc)
-    printHelp();
+	  printHelp();
 
   const char separator[2] = ",";
   char *token = strtok(devices_arg, separator);	/* Get first device */
@@ -422,25 +415,15 @@ int main(int argc, char* argv[]) {
   }
 
   num_of_devices = (i - 1);
-  char* device_names[num_of_devices];
-
-  struct transmit_device *devices_struct[num_of_devices];
+  struct transmit_device *device_list[num_of_devices];
 
   for(i = 0; i < num_of_devices; i++) {
-	  device_names[i] = device_name_list[i];	/*TODO: remove this and pass struct array instead */
 	  struct transmit_device *dev = malloc(sizeof(struct transmit_device));
-	  dev->name = device_names[i];
+	  dev->name = device_name_list[i];
 	  dev->enabled = true;
-	  dev->ring = NULL;
-	  devices_struct[i] = dev;
+	  enable_ring(dev);
+	  device_list[i] = dev;
   }
-
-  for(i = 0; i < num_of_devices; i++) {
-	  printf("struct device %s\n", devices_struct[i]->name);
-  }
-
-  pfring* rings[num_of_devices];
-  enable_rings(device_names, rings);
 
   signal(SIGINT, sigproc);
   signal(SIGTERM, sigproc);
@@ -454,12 +437,15 @@ int main(int argc, char* argv[]) {
   memcpy(&lastTime, &startTime, sizeof(startTime));
 
   pthread_t pth;
-  pthread_create(&pth, NULL, transmit_thread, &rings);
+  pthread_create(&pth, NULL, transmit_thread, &device_list);
 
   //TODO: add functionality to dynamically change rings.
 
   pthread_join(pth, NULL);
-  disable_rings(rings);
+  for(i = 0; i < num_of_devices; i++) {
+	  disable_ring(device_list[i]);
+  }
+
 
   return(0);
 }
