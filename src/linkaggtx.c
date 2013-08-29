@@ -41,6 +41,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <pcap.h>
+#include <pthread.h>
 
 #include "pfring.h"
 #include "pfutils.c"
@@ -92,45 +93,7 @@ struct timeval lastTime, startTime;
 int reforge_mac = 0;
 char mac_address[6];
 int send_len = 60;
-int if_index = -1;
 u_char buffer[9000];
-
-/* *************************************** */
-
-int is_fd_ready(int fd) {
-  struct timeval timeout = {0};
-  fd_set fdset;
-  FD_ZERO(&fdset);
-  FD_SET(fd, &fdset);
-  return (select(fd+1, &fdset, NULL, NULL, &timeout) == 1);
-}
-
-int read_packet_hex(u_char *buf, int buf_len) {
-  int i = 0, d, bytes = 0;
-  char c;
-  char s[3] = {0};
-
-  if (!is_fd_ready(fileno(stdin)))
-    return 0;
-
-  while ((d = fgetc(stdin)) != EOF) {
-    if (d < 0) break;
-    c = (u_char) d;
-    if ((c >= '0' && c <= '9') 
-     || (c >= 'a' && c <= 'f')
-     || (c >= 'A' && c <= 'F')) {
-      s[i&0x1] = c;
-      if (i&0x1) {
-        bytes = (i+1)/2;
-        sscanf(s, "%2hhx", &buf[bytes-1]);
-	if (bytes == buf_len) break;
-      }
-      i++;
-    }
-  }
-
-  return bytes;
-}
 
 /* *************************************** */
 
@@ -300,7 +263,8 @@ static void forge_udp_packet(u_char *buffer, u_int buffer_len, u_int idx) {
 							 IPPROTO_UDP + ntohs(udp_header->len)))));
 }
 
-static struct packet* create_packet() {
+static void setup_packets() {
+	forge_udp_packet(buffer, sizeof(buffer), 0);
 	struct packet *p = (struct packet *) malloc(sizeof(struct packet));
 	struct packet *last = NULL;
 	  if(p) {
@@ -323,10 +287,36 @@ static struct packet* create_packet() {
 		  /* oops, couldn't allocate memory */
 		  fprintf(stderr, "Unable to allocate memory requested (%s)\n", strerror(errno));
 	  }
-	  return p;
 }
 
 /* *************************************** */
+
+/*
+ * Open and enable the list of devices
+ */
+static void enable_rings(char** devices[], pfring** rings[], int num_of_devices) {
+
+	int i = 0;
+	for(i=0; i < num_of_devices; i++) {
+		pfring *ring = pfring_open(devices[i], 1500, 0);
+
+		if(ring == NULL) {
+			printf("pfring_open %s error [%s]\n", devices[i], strerror(errno));
+		} else {
+			printf("Sending packets on %s\n", devices[i]);
+			pfring_set_socket_mode(ring, send_only_mode);
+
+			if(pfring_enable_ring(ring) != 0) {
+				printf("Unable to enable ring :-(\n");
+				pfring_close(ring);
+			} else {
+				rings[i] = ring;
+			}
+		}
+	}
+
+	printf("Leaving enable_rings();");
+}
 
 int main(int argc, char* argv[]) {
   int c, i = 0;
@@ -359,64 +349,32 @@ int main(int argc, char* argv[]) {
   if(optind < argc) /* Extra argument */
     printHelp();
 
-
-  /*
-   * Open and enable the list of devices
-   */
-  char* deviceNames[2] = { "eth1", "eth2" };	/* TODO: remove hardcoded devices */
-  pfring* activeRings[2];
-  int m = 0;
-  for(m=0; m < sizeof(deviceNames)/sizeof(deviceNames[0]); m++) {
-	  pfring *ring = pfring_open(deviceNames[m], 1500, 0);
-	  if(ring == NULL) {
-		  printf("pfring_open %s error [%s]\n", deviceNames[m], strerror(errno));
-		  return(-1);
-	  } else {
-		  printf("Sending packets on %s\n", deviceNames[m]);
-		  pfring_set_socket_mode(ring, send_only_mode);
-
-		  if(pfring_enable_ring(ring) != 0) {
-		    printf("Unable to enable ring :-(\n");
-		    pfring_close(ring);
-		    return(-1);
-		  } else {
-			  activeRings[m] = ring;
-		  }
-	  }
-  }
+  /* TODO: remove hardcoded devices */
+  char* device_names[2] = { "eth1", "eth2" };
+  int num_of_devices = sizeof(device_names)/sizeof(device_names[0]);
+  pfring* rings[num_of_devices];
+  enable_rings(&device_names, &rings, num_of_devices);
 
   signal(SIGINT, sigproc);
   signal(SIGTERM, sigproc);
   signal(SIGINT, sigproc);
 
-  struct packet *p = NULL;
-  int stdin_packet_len;
-
-  if ((stdin_packet_len = read_packet_hex(buffer, sizeof(buffer))) > 0) {
-	  send_len = stdin_packet_len;
-  }
-
-  if (stdin_packet_len <= 0) {
-	  forge_udp_packet(buffer, sizeof(buffer), i);
-  }
-
-  p = create_packet();
+  setup_packets();
 
   gettimeofday(&startTime, NULL);
   memcpy(&lastTime, &startTime, sizeof(startTime));
 
   tosend = pkt_head;
   i = 0;
-  int numOfDevices = sizeof(deviceNames)/sizeof(deviceNames[0]);
-  printf("No. of active devices: %u\n", numOfDevices);
-  int deviceIdx = 0;
+  printf("No. of active devices: %u\n", num_of_devices);
+  int device_idx = 0;
 
   while((num_to_send == 0) || (i < num_to_send)) {
     int rc;
 
   redo:
 
-  rc = pfring_send(activeRings[deviceIdx], tosend->pkt, tosend->len, 0);
+  rc = pfring_send(rings[device_idx], tosend->pkt, tosend->len, 0);
 
     if(rc == PF_RING_ERROR_INVALID_ARGUMENT){
       printf("Attempting to send invalid packet");
@@ -431,19 +389,17 @@ int main(int argc, char* argv[]) {
 
     tosend = tosend->next;
 
-    tosend = pkt_head;
-
     if(num_to_send > 0)
     	i++;
-    deviceIdx++;
-    if(deviceIdx == numOfDevices)
-    	deviceIdx = 0;
+    device_idx++;
+    if(device_idx == num_of_devices)
+    	device_idx = 0;
   }
 
   int k = 0;
-  for(k=0; k < sizeof(activeRings)/sizeof(activeRings[0]); k++) {
-	  pfring_close(activeRings[k]);
-	  print_stats(activeRings[k], deviceNames[k]);
+  for(k=0; k < num_of_devices; k++) {
+	  pfring_close(rings[k]);
+	  print_stats(rings[k], device_names[k]);
   }
 
   return(0);
