@@ -28,6 +28,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <string.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <sys/mman.h>
 #include <errno.h>
@@ -83,9 +84,15 @@ struct udp_header {
   u_int16_t	check;		/* udp checksum */
 };
 
+struct transmit_device {
+	char* name;		/* standard device name eg; eth0 */
+	bool enabled;	/* is device used for transmission */
+	pfring* ring;
+};
+
 struct packet *pkt_head = NULL;
 pfring_stat pfringStats;
-char *in_dev = NULL;
+char *devices_arg = NULL;
 u_int8_t wait_for_packet = 1, do_shutdown = 0;
 u_int64_t num_pkt_good_sent = 0, last_num_pkt_good_sent = 0;
 u_int64_t num_bytes_good_sent = 0, last_num_bytes_good_sent = 0;
@@ -166,11 +173,11 @@ void sigproc(int sig) {
 
 void printHelp(void) {
   printf("linkaggtx\n");
-  printf("Hacked version of pfsend - allows a list of interfaces.\n\n");
+  printf("Aggregate link transmission prototype - allows the list of\ntransmission interfaces to be changed dynamically.\n");
   printf("linkaggtx -i out_dev [-h]\n"
          "       [-l <length>] [-n <num>]\n\n");
   printf("-h              Print this help\n");
-  printf("-i <device>     Device name. Use device\n");
+  printf("-i <list_of_devices>     Comma separated list of devices.\n");
   printf("-l <length>     Packet length to send. Ignored with -f\n");
   printf("-n <num>        Num pkts to send (use 0 for infinite)\n");
   exit(0);
@@ -380,7 +387,7 @@ int main(int argc, char* argv[]) {
       printHelp();
       break;
     case 'i':
-      in_dev = strdup(optarg);
+      devices_arg = strdup(optarg);
       break;
     case 'n':
       num_to_send = atoi(optarg);
@@ -394,33 +401,42 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  if(optind < argc) /* Extra argument */
+  if(optind < argc)
     printHelp();
 
   const char separator[2] = ",";
-  char *token = strtok(in_dev, separator);	/* Get first device */
-  char* devices[MAX_DEVICES_SUPPORTED];
-  devices[0] = token;
+  char *token = strtok(devices_arg, separator);	/* Get first device */
+  char* device_name_list[MAX_DEVICES_SUPPORTED];
+  device_name_list[0] = token;
   int i=1;
 
   while( token != NULL )
   {
 	  if(i <= MAX_DEVICES_SUPPORTED) {
 		  token = strtok(NULL, separator);
-		  devices[i] = token;
+		  device_name_list[i] = token;
 		  i++;
 	  } else {
-		  printf("Maximum 4 comma separated device names. eg; eth1,eth2,eth3,eth4\n");
-		  return(1);
+		  printHelp();
 	  }
   }
 
-  num_of_devices = i - 1;
+  num_of_devices = (i - 1);
   char* device_names[num_of_devices];
 
-  i = 0;
+  struct transmit_device *devices_struct[num_of_devices];
+
   for(i = 0; i < num_of_devices; i++) {
-	  device_names[i] = devices[i];
+	  device_names[i] = device_name_list[i];	/*TODO: remove this and pass struct array instead */
+	  struct transmit_device *dev = malloc(sizeof(struct transmit_device));
+	  dev->name = device_names[i];
+	  dev->enabled = true;
+	  dev->ring = NULL;
+	  devices_struct[i] = dev;
+  }
+
+  for(i = 0; i < num_of_devices; i++) {
+	  printf("struct device %s\n", devices_struct[i]->name);
   }
 
   pfring* rings[num_of_devices];
