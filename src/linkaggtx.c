@@ -305,9 +305,9 @@ static void enable_rings(char* devices[], pfring* rings[]) {
 		pfring *ring = pfring_open(devices[i], 1500, 0);
 
 		if(ring == NULL) {
-			printf("pfring_open %s error [%s]\n", devices[i], strerror(errno));
+			printf("pfring_open %s error [%s]\n", (char *) devices[i], strerror(errno));
 		} else {
-			printf("Sending packets on %s\n", devices[i]);
+			printf("Sending packets on %s\n", (char *)devices[i]);
 			pfring_set_socket_mode(ring, send_only_mode);
 
 			if(pfring_enable_ring(ring) != 0) {
@@ -330,14 +330,15 @@ static void disable_rings(pfring* rings[]) {
 
 static void transmit_packets(pfring* rings[]) {
 
-	printf("\n\n...starting transmission:");
-
 	int device_idx = 0, i = 0;
+	printf ("\n\nStarting transmission...\n");
+
 	  while((num_to_send == 0) || (i < num_to_send)) {
 	    int rc;
 
 	  redo:
 
+	  //printf("num_to_send = %u\n", num_to_send);
 	  rc = pfring_send(rings[device_idx], tosend->pkt, tosend->len, 0);
 
 	    if(rc == PF_RING_ERROR_INVALID_ARGUMENT){
@@ -358,13 +359,15 @@ static void transmit_packets(pfring* rings[]) {
 	    device_idx++;
 	    if(device_idx == num_of_devices)
 	    	device_idx = 0;
+
 	  }
-	  printf ("\n\n...ended transmission.\n");
+
+	  printf ("\n\n...ended transmission of %u packets.\n", num_to_send);
 
 }
 
 void *transmit_thread(void *arg) {
-	transmit_packets((pfring*) &arg);
+	transmit_packets((pfring**) arg);
 	return(0);
 }
 
@@ -414,10 +417,12 @@ int main(int argc, char* argv[]) {
   gettimeofday(&startTime, NULL);
   memcpy(&lastTime, &startTime, sizeof(startTime));
 
-//  pthread_t pth;
-//  pthread_create(&pth, NULL, transmit_thread, rings);
-  transmit_packets(rings);
+  pthread_t pth;
+  pthread_create(&pth, NULL, transmit_thread, &rings);
 
+  //TODO: add functionality to dynamically change rings.
+
+  pthread_join(pth, NULL);
   disable_rings(rings);
 
   return(0);
