@@ -82,7 +82,6 @@ struct udp_header {
 };
 
 struct packet *pkt_head = NULL;
-pfring  *pd, *pdother;
 pfring_stat pfringStats;
 char *in_dev = NULL;
 char *in_devother = NULL;
@@ -134,10 +133,10 @@ int read_packet_hex(u_char *buf, int buf_len) {
 
 /* *************************************** */
 
-void print_stats() {
+void print_stats(pfring* pd, char* dev) {
   double deltaMillisec, avgThpt, avgThptBits, avgThptBytes;
   struct timeval now;
-  char buf1[64], buf2[64], buf3[64], buf4[64], buf5[64], statsBuf[512], timebuf[128];
+  char buf3[64], buf4[64], buf5[64], statsBuf[512], timebuf[128];
   u_int64_t deltaMillisecStart;
 
   gettimeofday(&now, NULL);
@@ -149,7 +148,8 @@ void print_stats() {
   avgThptBits = avgThptBytes * 8;
 
   snprintf(statsBuf, sizeof(statsBuf),
-	   "TX rate: [average %s pps/%s Gbps][total %s pkts]",
+	   "%s TX rate: [average %s pps/%s Gbps][total %s pkts]",
+	   dev,
 	   pfring_format_numbers(avgThpt, buf3, sizeof(buf3), 1),
 	   pfring_format_numbers(avgThptBits/(1000*1000*1000),  buf4, sizeof(buf4), 1),
 	   pfring_format_numbers(num_pkt_good_sent, buf5, sizeof(buf5), 1));
@@ -173,7 +173,7 @@ void print_stats() {
 /* ******************************** */
 
 void my_sigalarm(int sig) {
-  print_stats();
+  //print_stats();
   alarm(1);
   signal(SIGALRM, my_sigalarm);
 }
@@ -186,9 +186,11 @@ void sigproc(int sig) {
   fprintf(stdout, "Leaving...\n");
   if(called) return; else called = 1;
   do_shutdown = 1;
-  print_stats();
+  //print_stats();
   printf("Sent %llu packets\n", (long long unsigned int)num_pkt_good_sent);
-  pfring_close(pd);
+  //pfring_close(pd);
+
+  /* TODO: need to close rings here, in case app doesn't run to completion */
 
   exit(0);
 }
@@ -328,7 +330,7 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  if((in_dev == NULL) || (optind < argc)) /* Extra argument */
+  if(optind < argc) /* Extra argument */
     printHelp();
 
 
@@ -415,9 +417,7 @@ int main(int argc, char* argv[]) {
   rc = pfring_send(activeRings[deviceIdx], tosend->pkt, tosend->len, 0);
 
     if(rc == PF_RING_ERROR_INVALID_ARGUMENT){
-      printf("Attempting to send invalid packet [len: %u][MTU: %u]%s\n",
-	     tosend->len, pd->mtu_len,
-      	     if_index != -1 ? " or using a wrong interface id" : "");
+      printf("Attempting to send invalid packet");
     } else if(rc < 0) {
     	/* Not enough space in buffer */
     	usleep(1);
@@ -438,11 +438,10 @@ int main(int argc, char* argv[]) {
     	deviceIdx = 0;
   }
 
-  print_stats(0);
-
   int k = 0;
   for(k=0; k < sizeof(activeRings)/sizeof(activeRings[0]); k++) {
 	  pfring_close(activeRings[k]);
+	  print_stats(activeRings[k], deviceNames[k]);
   }
 
   return(0);
