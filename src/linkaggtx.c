@@ -94,6 +94,9 @@ int reforge_mac = 0;
 char mac_address[6];
 int send_len = 60;
 u_char buffer[9000];
+u_int32_t num_to_send = 0;
+struct packet *tosend;
+int num_of_devices;
 
 /* *************************************** */
 
@@ -294,10 +297,11 @@ static void setup_packets() {
 /*
  * Open and enable the list of devices
  */
-static void enable_rings(char** devices[], pfring** rings[], int num_of_devices) {
+static void enable_rings(char* devices[], pfring* rings[]) {
 
 	int i = 0;
 	for(i=0; i < num_of_devices; i++) {
+
 		pfring *ring = pfring_open(devices[i], 1500, 0);
 
 		if(ring == NULL) {
@@ -314,14 +318,58 @@ static void enable_rings(char** devices[], pfring** rings[], int num_of_devices)
 			}
 		}
 	}
+}
 
-	printf("Leaving enable_rings();");
+static void disable_rings(pfring* rings[]) {
+	  int k = 0;
+	  for(k=0; k < num_of_devices; k++) {
+		  pfring_close(rings[k]);
+		  //print_stats(rings[k], device_names[k]);
+	  }
+}
+
+static void transmit_packets(pfring* rings[]) {
+
+	printf("\n\n...starting transmission:");
+
+	int device_idx = 0, i = 0;
+	  while((num_to_send == 0) || (i < num_to_send)) {
+	    int rc;
+
+	  redo:
+
+	  rc = pfring_send(rings[device_idx], tosend->pkt, tosend->len, 0);
+
+	    if(rc == PF_RING_ERROR_INVALID_ARGUMENT){
+	      printf("Attempting to send invalid packet");
+	    } else if(rc < 0) {
+	    	/* Not enough space in buffer */
+	    	usleep(1);
+	    	goto redo;
+	    }
+
+	    num_pkt_good_sent++;
+	    num_bytes_good_sent += tosend->len + 24 /* 8 Preamble + 4 CRC + 12 IFG */;
+
+	    tosend = tosend->next;
+
+	    if(num_to_send > 0)
+	    	i++;
+	    device_idx++;
+	    if(device_idx == num_of_devices)
+	    	device_idx = 0;
+	  }
+	  printf ("\n\n...ended transmission.\n");
+
+}
+
+void *transmit_thread(void *arg) {
+	transmit_packets((pfring*) &arg);
+	return(0);
 }
 
 int main(int argc, char* argv[]) {
-  int c, i = 0;
-  u_int32_t num_to_send = 0;
-  struct packet *tosend;
+  int c;
 
   while((c = getopt(argc, argv, "hi:j:n:l:")) != -1) {
     switch(c) {
@@ -351,56 +399,26 @@ int main(int argc, char* argv[]) {
 
   /* TODO: remove hardcoded devices */
   char* device_names[2] = { "eth1", "eth2" };
-  int num_of_devices = sizeof(device_names)/sizeof(device_names[0]);
+  num_of_devices = sizeof(device_names)/sizeof(device_names[0]);
   pfring* rings[num_of_devices];
-  enable_rings(&device_names, &rings, num_of_devices);
+  enable_rings(device_names, rings);
 
   signal(SIGINT, sigproc);
   signal(SIGTERM, sigproc);
   signal(SIGINT, sigproc);
 
   setup_packets();
+  tosend = pkt_head;
+  printf("No. of active devices: %u\n", num_of_devices);
 
   gettimeofday(&startTime, NULL);
   memcpy(&lastTime, &startTime, sizeof(startTime));
 
-  tosend = pkt_head;
-  i = 0;
-  printf("No. of active devices: %u\n", num_of_devices);
-  int device_idx = 0;
+//  pthread_t pth;
+//  pthread_create(&pth, NULL, transmit_thread, rings);
+  transmit_packets(rings);
 
-  while((num_to_send == 0) || (i < num_to_send)) {
-    int rc;
-
-  redo:
-
-  rc = pfring_send(rings[device_idx], tosend->pkt, tosend->len, 0);
-
-    if(rc == PF_RING_ERROR_INVALID_ARGUMENT){
-      printf("Attempting to send invalid packet");
-    } else if(rc < 0) {
-    	/* Not enough space in buffer */
-    	usleep(1);
-    	goto redo;
-    }
-
-    num_pkt_good_sent++;
-    num_bytes_good_sent += tosend->len + 24 /* 8 Preamble + 4 CRC + 12 IFG */;
-
-    tosend = tosend->next;
-
-    if(num_to_send > 0)
-    	i++;
-    device_idx++;
-    if(device_idx == num_of_devices)
-    	device_idx = 0;
-  }
-
-  int k = 0;
-  for(k=0; k < num_of_devices; k++) {
-	  pfring_close(rings[k]);
-	  print_stats(rings[k], device_names[k]);
-  }
+  disable_rings(rings);
 
   return(0);
 }
