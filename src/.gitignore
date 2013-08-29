@@ -1,3 +1,5 @@
 pfcount
+pfsend
+linkaggtx
 /.settings
-/pfcount.o
+*.o
