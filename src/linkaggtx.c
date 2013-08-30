@@ -1,25 +1,27 @@
 /*
+ *	The MIT License (MIT)
  *
- * (C) 2005-12 - Luca Deri <deri@ntop.org>
+ *	Copyright (c) 2013 Mark Liggett
  *
+ *	Permission is hereby granted, free of charge, to any person obtaining a copy of
+ *	this software and associated documentation files (the "Software"), to deal in
+ *	the Software without restriction, including without limitation the rights to
+ *	use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ *	the Software, and to permit persons to whom the Software is furnished to do so,
+ *	subject to the following conditions:
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ *	The above copyright notice and this permission notice shall be included in all
+ *	copies or substantial portions of the Software.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ *	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ *	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ *	FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ *	COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ *	IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ *	CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
- *
- * VLAN support courtesy of Vincent Magnin <vincent.magnin@ci.unil.ch>
- *
- */
+*/
+
 
 #define _GNU_SOURCE
 #include <signal.h>
@@ -50,39 +52,33 @@
 static const char REMOVE_MEMBER_INPUT = '-';
 static const char ADD_MEMBER_INPUT = '+';
 static const int MAX_DEVICES_SUPPORTED = 4;
+struct packet *pkt_head = NULL;
+char *devices_arg = NULL;
+u_int8_t do_shutdown = 0;
+u_int64_t num_pkt_good_sent = 0, last_num_pkt_good_sent = 0;
+u_int64_t num_bytes_good_sent = 0, last_num_bytes_good_sent = 0;
+struct timeval lastTime, startTime;
+int reforge_mac = 0;
+char mac_address[6];
+int send_len = 60;
+u_char buffer[9000];
+u_int32_t num_to_send = 0;
+struct packet *tosend;
+int num_of_devices;
+pthread_mutex_t device_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-int has_kb_input()
-{
-    // timeout structure passed into select
-    struct timeval tv;
-    // fd_set passed into select
-    fd_set fds;
-    // Set up the timeout.  here we can wait for 1 second
-    tv.tv_sec = 1;
-    tv.tv_usec = 0;
-
-    // Zero out the fd_set - make sure it's pristine
-    FD_ZERO(&fds);
-    // Set the FD that we want to read
-    FD_SET(STDIN_FILENO, &fds); //STDIN_FILENO is 0
-    // select takes the last file descriptor value + 1 in the fdset to check,
-    // the fdset for reads, writes, and errors.  We are only passing in reads.
-    // the last parameter is the timeout.  select will return if an FD is ready or
-    // the timeout has occurred
-    select(STDIN_FILENO+1, &fds, NULL, NULL, &tv);
-    // return 0 if STDIN is not ready to be read.
-    return FD_ISSET(STDIN_FILENO, &fds);
-}
-
-
-
+/*
+ * Circular packet linked-list
+ */
 struct packet {
   u_int16_t len;
-  u_int64_t ticks_from_beginning;
   char *pkt;
   struct packet *next;
 };
 
+/**
+ * IP Header definition
+ */
 struct ip_header {
 #if BYTE_ORDER == LITTLE_ENDIAN
   u_int32_t	ihl:4,		/* header length */
@@ -101,9 +97,9 @@ struct ip_header {
   u_int32_t saddr, daddr;	/* source and dest address */
 };
 
-/*
- * Udp protocol header.
- * Per RFC 768, September, 1981.
+/**
+ * Udp protocol header. Per RFC 768, September, 1981.
+ *
  */
 struct udp_header {
   u_int16_t	source;		/* source port */
@@ -112,78 +108,19 @@ struct udp_header {
   u_int16_t	check;		/* udp checksum */
 };
 
+/**
+ * Maps a physical device to a pf ring.  Has an enabled or disabled member field.
+ */
 struct tx_device {
 	char* name;		/* standard device name eg; eth0 */
 	bool enabled;	/* is device used for transmission */
 	pfring* ring;
 };
 
-struct packet *pkt_head = NULL;// if != 0, then there is data to be read on stdin
-
-
-pfring_stat pfringStats;
-char *devices_arg = NULL;
-u_int8_t wait_for_packet = 1, do_shutdown = 0;
-u_int64_t num_pkt_good_sent = 0, last_num_pkt_good_sent = 0;
-u_int64_t num_bytes_good_sent = 0, last_num_bytes_good_sent = 0;
-struct timeval lastTime, startTime;
-int reforge_mac = 0;
-char mac_address[6];
-int send_len = 60;
-u_char buffer[9000];
-u_int32_t num_to_send = 0;
-struct packet *tosend;
-int num_of_devices;
-pthread_mutex_t device_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-/* *************************************** */
-
-void print_stats(pfring* pd, char* dev) {
-  double deltaMillisec, avgThpt, avgThptBits, avgThptBytes;
-  struct timeval now;
-  char buf3[64], buf4[64], buf5[64], statsBuf[512], timebuf[128];
-  u_int64_t deltaMillisecStart;
-
-  gettimeofday(&now, NULL);
-  deltaMillisec = delta_time(&now, &lastTime);
-
-  deltaMillisec = delta_time(&now, &startTime);
-  avgThpt = (double)(num_pkt_good_sent * 1000)/deltaMillisec;
-  avgThptBytes = (double)(num_bytes_good_sent * 1000)/deltaMillisec;
-  avgThptBits = avgThptBytes * 8;
-
-  snprintf(statsBuf, sizeof(statsBuf),
-	   "%s TX rate: [average %s pps/%s Gbps][total %s pkts]",
-	   dev,
-	   pfring_format_numbers(avgThpt, buf3, sizeof(buf3), 1),
-	   pfring_format_numbers(avgThptBits/(1000*1000*1000),  buf4, sizeof(buf4), 1),
-	   pfring_format_numbers(num_pkt_good_sent, buf5, sizeof(buf5), 1));
-  
-  fprintf(stdout, "%s\n", statsBuf);
-
-  deltaMillisecStart = delta_time(&now, &startTime);
-  snprintf(statsBuf, sizeof(statsBuf),
-           "Duration:          %s\n"
-           "SentPackets:       %lu\n"
-           "SentBytes:         %lu\n",
-           sec2dhms((deltaMillisecStart/1000), timebuf, sizeof(timebuf)),
-           (long unsigned int) num_pkt_good_sent,
-           (long unsigned int) num_bytes_good_sent);
-  pfring_set_application_stats(pd, statsBuf);
-
-  memcpy(&lastTime, &now, sizeof(now));
-  last_num_pkt_good_sent = num_pkt_good_sent, last_num_bytes_good_sent = num_bytes_good_sent;
-}
-
-/* ******************************** */
-
 void my_sigalarm(int sig) {
-  //print_stats();
   alarm(1);
   signal(SIGALRM, my_sigalarm);
 }
-
-/* ******************************** */
 
 void sigproc(int sig) {
   static int called = 0;
@@ -191,16 +128,12 @@ void sigproc(int sig) {
   fprintf(stdout, "Leaving...\n");
   if(called) return; else called = 1;
   do_shutdown = 1;
-  //print_stats();
   printf("Sent %llu packets\n", (long long unsigned int)num_pkt_good_sent);
-  //pfring_close(pd);
 
   /* TODO: need to close rings here, in case app doesn't run to completion */
 
   exit(0);
 }
-
-/* *************************************** */
 
 void printHelp(void) {
   printf("linkaggtx\n");
@@ -221,7 +154,6 @@ void printHelp(void) {
  *
  * Borrowed from DHCPd
  */
-
 static u_int32_t in_cksum(unsigned char *buf,
 			  unsigned nbytes, u_int32_t sum) {
   uint i;
@@ -246,8 +178,6 @@ static u_int32_t in_cksum(unsigned char *buf,
   return sum;
 }
 
-/* ******************************************* */
-
 static u_int32_t wrapsum (u_int32_t sum) {
   sum = ~sum & 0xFFFF;
   return htons(sum);
@@ -255,6 +185,9 @@ static u_int32_t wrapsum (u_int32_t sum) {
 
 /* ******************************************* */
 
+/**
+ * Construct a valid IP header for the tx packets
+ */
 static void forge_udp_packet(u_char *buffer, u_int buffer_len, u_int idx) {
   int i;
   struct ip_header *ip_header;
@@ -304,6 +237,9 @@ static void forge_udp_packet(u_char *buffer, u_int buffer_len, u_int idx) {
 							 IPPROTO_UDP + ntohs(udp_header->len)))));
 }
 
+/**
+ * Setup a tx packet with a circular reference to itself.
+ */
 static void setup_packets() {
 	forge_udp_packet(buffer, sizeof(buffer), 0);
 	struct packet *p = (struct packet *) malloc(sizeof(struct packet));
@@ -312,7 +248,6 @@ static void setup_packets() {
 		  pkt_head = p;
 
 		  p->len = send_len;
-		  p->ticks_from_beginning = 0;
 		  p->next = pkt_head;
 		  p->pkt = (char*)malloc(p->len);
 
@@ -330,12 +265,28 @@ static void setup_packets() {
 	  }
 }
 
-/* *************************************** */
+/**
+ * Indicate whether stdin is ready to be read. eg; Has pending character data.
+ */
+static int has_kb_input()
+{
+    struct timeval tv;
+    fd_set fds;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+    select(STDIN_FILENO+1, &fds, NULL, NULL, &tv);
+    return FD_ISSET(STDIN_FILENO, &fds);
+}
 
 /*
  * Open ring for the given device.
+ *
+ * @param tx_device the device to open a ring for.
  */
-static void enable_ring(struct tx_device *device_to_enable) {
+static int enable_ring(struct tx_device *device_to_enable) {
 
 	pfring *ring = pfring_open(device_to_enable->name, 1500, 0);
 
@@ -350,16 +301,29 @@ static void enable_ring(struct tx_device *device_to_enable) {
 		} else {
 			device_to_enable->ring=ring;
 			printf("Sending packets on %s\n", device_to_enable->name);
+			return 1;
 		}
 	}
+	return 0;
 }
 
+/**
+ * Gracefully disable the tx_device if it is enabled.
+ *
+ * @param dev* the tx_device to be disabled.
+ */
 static void disable_ring(struct tx_device *dev) {
 	pfring_close(dev->ring);
 	dev->ring = NULL;
 	//print_stats(rings[k], device_names[k]);
 }
 
+/**
+ * Iterates across the tx_devices and if enabled tx a
+ * packet, otherwise move to the next device.
+ *
+ * @param tx_device*[] a list of tx_devices*
+ */
 static void tx_packets(struct tx_device* enabled_devices[]) {
 
 	int device_idx = 0, i = 0;
@@ -418,6 +382,11 @@ static void tx_packets(struct tx_device* enabled_devices[]) {
 	  fflush(stdout);
 }
 
+/**
+ * Spawn a transmission thread on the active devices
+ *
+ * @param void* the array of structs containing the tx_devices*
+ */
 void *tx_thread(void *arg) {
 	tx_packets((struct tx_device**) arg);
 	return(0);
@@ -447,28 +416,6 @@ static void enable_device(struct tx_device* device) {
 		device->enabled = true;
 		pthread_mutex_unlock(&device_mutex);
 	}
-}
-
-/**
- * Return the index of the given device or -1 if not
- * a member of the device list.
- *
- * @param	device_list*[] the list of devices.
- * @param	name the names of the device to find.
- */
-static int find_device(struct tx_device* device_list[], char* device_name) {
-
-	int result = -1;
-	int i;
-
-	for(i=0; i < num_of_devices; i++) {
-		if(strcmp(device_list[i]->name, device_name) == 0) {
-			result = i;
-			break;
-		}
-	}
-
-	return result;
 }
 
 int main(int argc, char* argv[]) {
@@ -515,13 +462,14 @@ int main(int argc, char* argv[]) {
   }
 
   num_of_devices = (i - 1);
+  int active_devices = 0;
   struct tx_device *device_list[num_of_devices];
 
   for(i = 0; i < num_of_devices; i++) {
 	  struct tx_device *dev = malloc(sizeof(struct tx_device));
 	  dev->name = device_name_list[i];
 	  dev->enabled = true;
-	  enable_ring(dev);
+	  active_devices += enable_ring(dev);
 	  device_list[i] = dev;
   }
 
@@ -531,7 +479,7 @@ int main(int argc, char* argv[]) {
 
   setup_packets();
   tosend = pkt_head;
-  printf("No. of active devices: %u\n", num_of_devices);
+  printf("No. of active devices: %u\n", active_devices);
 
   gettimeofday(&startTime, NULL);
   memcpy(&lastTime, &startTime, sizeof(startTime));
@@ -548,12 +496,18 @@ int main(int argc, char* argv[]) {
 	  if (kb_struck)
 	  {
 		  kb_input = fgetc(stdin);
-		  if (kb_input == ADD_MEMBER_INPUT) {
-			  enable_device(device_list[1]);
-			  printf("Member enabled...%u\n", c);
-		  } else if (kb_input == REMOVE_MEMBER_INPUT) {
-			  disable_device(device_list[1]);
-			  printf("Member disabled...%u\n", c);
+		  if ((kb_input == ADD_MEMBER_INPUT) && (active_devices < num_of_devices)) {
+
+			  enable_device(device_list[active_devices]);
+			  printf("...member %s enabled\n", device_list[active_devices]->name);
+			  active_devices++;
+
+		  } else if ((kb_input == REMOVE_MEMBER_INPUT) && (active_devices > 1)) {
+
+			  disable_device(device_list[active_devices - 1]);
+			  printf("...member %s disabled\n", device_list[active_devices - 1]->name);
+			  active_devices--;
+
 		  }
 	  }
 
@@ -565,7 +519,6 @@ int main(int argc, char* argv[]) {
   for(i = 0; i < num_of_devices; i++) {
 	  disable_ring(device_list[i]);
   }
-
 
   return(0);
 }
