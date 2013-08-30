@@ -347,6 +347,7 @@ static void tx_packets(struct tx_device* enabled_devices[]) {
 	}
 
 	printf ("\nStarting transmission...\n");
+	fflush(stdout);
 
 	  while((num_to_send == 0) || (i < num_to_send)) {
 	    int rc;
@@ -384,12 +385,60 @@ static void tx_packets(struct tx_device* enabled_devices[]) {
 	  }
 
 	  printf ("\n...ended transmission of %u packets.\n", num_to_send);
-
+	  fflush(stdout);
 }
 
 void *tx_thread(void *arg) {
 	tx_packets((struct tx_device**) arg);
 	return(0);
+}
+
+/**
+ * Disable transmissions on the given device.
+ *
+ * @param	tx_device* the device to be disabled.
+ */
+static void disable_device(struct tx_device* device) {
+	if(device->enabled) {
+		pthread_mutex_lock(&device_mutex);
+		device->enabled = false;
+		pthread_mutex_unlock(&device_mutex);
+	}
+}
+
+/**
+ * Enable transmissions on the given device.
+ *
+ * @param	tx_device* the device to be enabled.
+ */
+static void enable_device(struct tx_device* device) {
+	if(!device->enabled) {
+		pthread_mutex_lock(&device_mutex);
+		device->enabled = true;
+		pthread_mutex_unlock(&device_mutex);
+	}
+}
+
+/**
+ * Return the index of the given device or -1 if not
+ * a member of the device list.
+ *
+ * @param	device_list*[] the list of devices.
+ * @param	name the names of the device to find.
+ */
+static int find_device(struct tx_device* device_list[], char* device_name) {
+
+	int result = -1;
+	int i;
+
+	for(i=0; i < num_of_devices; i++) {
+		if(strcmp(device_list[i]->name, device_name) == 0) {
+			result = i;
+			break;
+		}
+	}
+
+	return result;
 }
 
 int main(int argc, char* argv[]) {
@@ -460,16 +509,21 @@ int main(int argc, char* argv[]) {
   pthread_t pth;
   pthread_create(&pth, NULL, tx_thread, &device_list);
 
-  //TODO: add functionality to dynamically change rings.
-  char answer;
-  scanf("%c",&answer);
-  if('-' == answer) {
-	  printf("device removed\n");
-	  pthread_mutex_lock(&device_mutex);
-	  device_list[0]->enabled = false;
-	  pthread_mutex_unlock(&device_mutex);
-  }
-
+do {
+	char c;
+	char line_buffer[50];
+	fgets(line_buffer, sizeof(line_buffer), stdin);
+	sscanf(line_buffer, "%c", &c);
+	if (c == '-') {
+		/* Disable tx on device */
+		printf("Member disabled...%u\n", c);
+	} else if(c == '+') {
+		/* Enable tx on device */
+		printf("Member enabled...%u\n", c);
+	} else {
+		printf("Invalid input...\n");
+	}
+} while (pthread_kill(pth, 0) != ESRCH);
 
   pthread_join(pth, NULL);
   for(i = 0; i < num_of_devices; i++) {
