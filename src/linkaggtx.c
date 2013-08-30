@@ -47,7 +47,35 @@
 #include "pfring.h"
 #include "pfutils.c"
 
+static const char REMOVE_MEMBER_INPUT = '-';
+static const char ADD_MEMBER_INPUT = '+';
 static const int MAX_DEVICES_SUPPORTED = 4;
+
+int has_kb_input()
+{
+    // timeout structure passed into select
+    struct timeval tv;
+    // fd_set passed into select
+    fd_set fds;
+    // Set up the timeout.  here we can wait for 1 second
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+
+    // Zero out the fd_set - make sure it's pristine
+    FD_ZERO(&fds);
+    // Set the FD that we want to read
+    FD_SET(STDIN_FILENO, &fds); //STDIN_FILENO is 0
+    // select takes the last file descriptor value + 1 in the fdset to check,
+    // the fdset for reads, writes, and errors.  We are only passing in reads.
+    // the last parameter is the timeout.  select will return if an FD is ready or
+    // the timeout has occurred
+    select(STDIN_FILENO+1, &fds, NULL, NULL, &tv);
+    // return 0 if STDIN is not ready to be read.
+    return FD_ISSET(STDIN_FILENO, &fds);
+}
+
+
+
 struct packet {
   u_int16_t len;
   u_int64_t ticks_from_beginning;
@@ -90,7 +118,9 @@ struct tx_device {
 	pfring* ring;
 };
 
-struct packet *pkt_head = NULL;
+struct packet *pkt_head = NULL;// if != 0, then there is data to be read on stdin
+
+
 pfring_stat pfringStats;
 char *devices_arg = NULL;
 u_int8_t wait_for_packet = 1, do_shutdown = 0;
@@ -506,26 +536,32 @@ int main(int argc, char* argv[]) {
   gettimeofday(&startTime, NULL);
   memcpy(&lastTime, &startTime, sizeof(startTime));
 
-  pthread_t pth;
-  pthread_create(&pth, NULL, tx_thread, &device_list);
+  pthread_t tx_thread_id;
+  pthread_create(&tx_thread_id, NULL, tx_thread, &device_list);
 
-do {
-	char c;
-	char line_buffer[50];
-	fgets(line_buffer, sizeof(line_buffer), stdin);
-	sscanf(line_buffer, "%c", &c);
-	if (c == '-') {
-		/* Disable tx on device */
-		printf("Member disabled...%u\n", c);
-	} else if(c == '+') {
-		/* Enable tx on device */
-		printf("Member enabled...%u\n", c);
-	} else {
-		printf("Invalid input...\n");
-	}
-} while (pthread_kill(pth, 0) != ESRCH);
+  int kb_struck = false;
+  do {
+	  char kb_input;
+	  usleep(1);
+	  kb_struck = has_kb_input();
 
-  pthread_join(pth, NULL);
+	  if (kb_struck)
+	  {
+		  kb_input = fgetc(stdin);
+		  if (kb_input == ADD_MEMBER_INPUT) {
+			  enable_device(device_list[1]);
+			  printf("Member enabled...%u\n", c);
+		  } else if (kb_input == REMOVE_MEMBER_INPUT) {
+			  disable_device(device_list[1]);
+			  printf("Member disabled...%u\n", c);
+		  }
+	  }
+
+	  kb_struck = false;
+
+  } while ((pthread_kill(tx_thread_id, 0) != ESRCH) && !kb_struck);
+
+  pthread_join(tx_thread_id, NULL);
   for(i = 0; i < num_of_devices; i++) {
 	  disable_ring(device_list[i]);
   }
