@@ -7,7 +7,7 @@ LIBPFRING	= ${DIRPFRING}/lib/libpfring.a
 LIBPCAP		= ${DIRPFRING}/libpcap/libpcap.a
 LIBS		= ${LIBPFRING} ${LIBPCAP}
 
-all: kernel-mod libpfring libpcap linkaggtx
+all: kernel-mod libpfring libpcap linkaggtx linkaggbw
 
 kernel-mod:
 	cd ${DIRPFRING}/kernel && \
@@ -25,9 +25,12 @@ libpcap:
 
 linkaggtx: linkaggtx.o ${LIBPFRING}
 	${CC} ${CFLAGS} ${LINKS} linkaggtx.o ${LIBS} -o $@
+
+linkaggbw: linkaggbw.o ${LIBPFRING}
+	${CC} ${CFLAGS} ${LINKS} linkaggbw.o ${LIBS} -o $@
 	
 clean:
-	/bin/rm -f *.o linkaggtx
+	/bin/rm -f *.o linkaggtx linkaggbw
 	cd ${DIRPFRING}/lib && \
 	$(MAKE) clean
 	cd ../../../
